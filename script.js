@@ -268,7 +268,7 @@ function drawClues(stepX, stepY) {
             const clue = cellClues[y][x];
             const cx = x * stepX + stepX / 2;
             const cy = y * stepY + stepY / 2;
-            ctx.fillText(`${clue.vertices}/${clue.edges}`, cx, cy);
+            ctx.fillText(`${clue.edges}/${clue.vertices}`, cx, cy);
         }
     }
 }
