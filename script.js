@@ -131,15 +131,21 @@ function generateSimplePath(size, targetEdges, forceConnect) {
     const allowedEdges = Math.min(targetEdges, maxEdges);
     if (allowedEdges < 1) return new Set();
 
-    for (let attempt = 0; attempt < 200; attempt++) {
-        const start = { x: Math.floor(rng() * (size + 1)), y: Math.floor(rng() * (size + 1)) };
-        const visited = new Set([`${start.x},${start.y}`]);
-        const edges = new Set();
-        if (growPath(start, visited, edges, allowedEdges)) {
-            return edges;
+    const vertices = [];
+    for (let y = 0; y <= size; y++) {
+        const row = [];
+        for (let x = 0; x <= size; x++) {
+            row.push({ x, y });
         }
+        if (y % 2 === 1) row.reverse();
+        vertices.push(...row);
     }
-    return new Set();
+
+    const edges = new Set();
+    for (let i = 0; i < allowedEdges; i++) {
+        edges.add(edgeKey(vertices[i], vertices[i + 1]));
+    }
+    return edges;
 }
 
 function growPath(current, visited, edges, targetEdges) {
