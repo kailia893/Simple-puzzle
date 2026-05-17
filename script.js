@@ -154,7 +154,7 @@ function growPath(current, visited, edges, targetEdges) {
     return false;
 }
 
-function generateConnectedSubgraph(size, targetEdges, forceConnect) {
+function generateConnectedSubgraph(size, targetEdges, allowLoops) {
     const allVertices = [];
     for (let y = 0; y <= size; y++) {
         for (let x = 0; x <= size; x++) {
