@@ -51,7 +51,9 @@ function startGame() {
 
     let edges;
     if (solutionConnected) {
-        edges = allowLoops ? generateConnectedSubgraph(gridSize, targetEdges, allowLoops) : generateSimplePath(gridSize, targetEdges);
+        // Always generate a connected subgraph when the "Connected?" option is set.
+        // Let the generator decide whether to add extra loop edges based on `allowLoops`.
+        edges = generateConnectedSubgraph(gridSize, targetEdges, allowLoops);
     } else {
         edges = generateRandomEdgeSet(gridSize, targetEdges, allowLoops);
     }
@@ -412,7 +414,9 @@ function drawBadCells(stepX, stepY, padding) {
 }
 
 function handleCanvasClick(event) {
-    if (!gridSize || gameFinished || showingSolution) return;
+    // Allow editing after the puzzle is solved (timer will already be stopped).
+    // Still prevent interaction when the solution is being shown.
+    if (!gridSize || showingSolution) return;
     const rect = canvas.getBoundingClientRect();
     const padding = Math.max(16, Math.min(rect.width, rect.height) * 0.06);
     const stepX = (rect.width - padding * 2) / gridSize;
