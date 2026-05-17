@@ -61,6 +61,7 @@ function startGame() {
 
     solutionEdges = edges;
     solutionVertices = collectVertices(edges);
+    cellClues = computeCellClues(gridSize, solutionEdges);
     playerEdges = new Set();
     selectedVertex = null;
     badCells = [];
