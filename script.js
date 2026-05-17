@@ -9,8 +9,6 @@ const seedInput = document.getElementById('seedInput');
 const connectInput = document.getElementById('connect');
 const densityCheckbox = document.getElementById('Density');
 const densityInput = document.getElementById('density');
-const solutionInput = document.getElementById('solution');
-const submitButton = document.getElementById('submitButton');
 const startButton = document.getElementById('startButton');
 const checkButton = document.getElementById('checkButton');
 
@@ -21,10 +19,11 @@ let solutionEdges = new Set();
 let solutionVertices = new Set();
 let rng = Math.random;
 let startTime = null;
+let selectedVertex = null;
 
 startButton.addEventListener('click', startGame);
-submitButton.addEventListener('click', submitGuess);
 checkButton.addEventListener('click', checkSolution);
+canvas.addEventListener('click', handleCanvasClick);
 
 function startGame() {
     gridSize = Math.max(3, Math.min(10, parseInt(difficultyInput.value) || 5));
@@ -51,6 +50,7 @@ function startGame() {
     solutionEdges = edges;
     solutionVertices = collectVertices(edges);
     playerEdges = new Set();
+    selectedVertex = null;
     cellClues = computeCellClues(gridSize, solutionEdges);
     startTime = Date.now();
     showMessage(`Game started (seed ${seed}, density ${densityValue}, ${allowLoops ? 'loops allowed' : 'no loops'}).`, 'info');
@@ -253,6 +253,7 @@ function drawGrid() {
     drawClues(stepX, stepY);
     drawPlayerEdges(stepX, stepY);
     drawVertices(stepX, stepY);
+    drawSelectedVertex(stepX, stepY);
     updateTimer();
 }
 
@@ -304,36 +305,64 @@ function drawVertices(stepX, stepY) {
     }
 }
 
-function submitGuess() {
-    const input = solutionInput.value.trim();
-    const edge = parseEdgeInput(input);
-    if (!edge) {
-        showMessage('Enter a valid adjacent edge format: (x1,y1),(x2,y2).', 'error');
+function drawSelectedVertex(stepX, stepY) {
+    if (!selectedVertex) return;
+    const px = selectedVertex.x * stepX;
+    const py = selectedVertex.y * stepY;
+    ctx.beginPath();
+    ctx.strokeStyle = '#f08';
+    ctx.lineWidth = 4;
+    ctx.arc(px, py, 8, 0, Math.PI * 2);
+    ctx.stroke();
+}
+
+function handleCanvasClick(event) {
+    if (!gridSize) return;
+    const rect = canvas.getBoundingClientRect();
+    const pointX = event.clientX - rect.left;
+    const pointY = event.clientY - rect.top;
+    const stepX = rect.width / gridSize;
+    const stepY = rect.height / gridSize;
+    const x = Math.round(pointX / stepX);
+    const y = Math.round(pointY / stepY);
+    if (x < 0 || x > gridSize || y < 0 || y > gridSize) return;
+    const dist = Math.hypot(pointX - x * stepX, pointY - y * stepY);
+    if (dist > 18) return;
+
+    const clickedVertex = { x, y };
+    if (!selectedVertex) {
+        selectedVertex = clickedVertex;
+        showMessage(`Selected vertex (${x},${y}). Click an adjacent vertex to toggle an edge.`, 'info');
+        drawGrid();
         return;
     }
+
+    const sameVertex = selectedVertex.x === clickedVertex.x && selectedVertex.y === clickedVertex.y;
+    if (sameVertex) {
+        selectedVertex = null;
+        showMessage('Selection cleared.', 'info');
+        drawGrid();
+        return;
+    }
+
+    const edge = [selectedVertex, clickedVertex];
     if (!isValidEdge(edge)) {
-        showMessage('Vertices must be adjacent and inside the grid.', 'error');
+        selectedVertex = null;
+        showMessage('Vertices must be adjacent. Click a new vertex to start again.', 'error');
+        drawGrid();
         return;
     }
+
     const key = edgeKey(edge[0], edge[1]);
     if (playerEdges.has(key)) {
         playerEdges.delete(key);
-        showMessage('Edge removed.', 'info');
+        showMessage(`Edge removed between (${edge[0].x},${edge[0].y}) and (${edge[1].x},${edge[1].y}).`, 'info');
     } else {
         playerEdges.add(key);
-        showMessage('Edge added.', 'info');
+        showMessage(`Edge added between (${edge[0].x},${edge[0].y}) and (${edge[1].x},${edge[1].y}).`, 'info');
     }
+    selectedVertex = null;
     drawGrid();
-}
-
-function parseEdgeInput(text) {
-    const matches = text.match(/\(?\s*(\d+)\s*,\s*(\d+)\s*\)?\s*,\s*\(?\s*(\d+)\s*,\s*(\d+)\s*\)?/);
-    if (!matches) return null;
-    const x1 = parseInt(matches[1], 10);
-    const y1 = parseInt(matches[2], 10);
-    const x2 = parseInt(matches[3], 10);
-    const y2 = parseInt(matches[4], 10);
-    return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
 }
 
 function isValidEdge([a, b]) {
