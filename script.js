@@ -46,7 +46,8 @@ function startGame() {
     const densityValue = chooseDensity ? Math.max(1, Math.min(15, parseInt(densityInput.value) || 5)) : Math.floor(rng() * 15) + 1;
 
     const totalEdges = gridSize * (gridSize + 1) * 2;
-    const targetEdges = Math.max(3, Math.round(totalEdges * (densityValue / 15) * 0.5));
+    const densityFraction = 0.35 + ((densityValue - 1) / 14) * 0.5; // 1 => ~35%, 15 => ~85%
+    const targetEdges = Math.max(3, Math.round(totalEdges * densityFraction));
 
     let edges;
     if (solutionConnected) {
