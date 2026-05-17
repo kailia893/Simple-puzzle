@@ -6,11 +6,12 @@ const difficultyInput = document.getElementById('difficulty');
 const allowLoopsInput = document.getElementById('allowLoops');
 const seedCheckbox = document.getElementById('seed');
 const seedInput = document.getElementById('seedInput');
-const connectInput = document.getElementById('connect');
+const connectedInput = document.getElementById('connected');
 const densityCheckbox = document.getElementById('Density');
 const densityInput = document.getElementById('density');
 const startButton = document.getElementById('startButton');
 const checkButton = document.getElementById('checkButton');
+const showSolutionButton = document.getElementById('showSolutionButton');
 
 let gridSize = 5;
 let cellClues = [];
@@ -19,10 +20,16 @@ let solutionEdges = new Set();
 let solutionVertices = new Set();
 let rng = Math.random;
 let startTime = null;
+let timerInterval = null;
 let selectedVertex = null;
+let badCells = [];
+let solutionConnected = true;
+let showingSolution = false;
+let gameFinished = false;
 
 startButton.addEventListener('click', startGame);
 checkButton.addEventListener('click', checkSolution);
+showSolutionButton.addEventListener('click', revealSolution);
 canvas.addEventListener('click', handleCanvasClick);
 
 function startGame() {
@@ -34,27 +41,36 @@ function startGame() {
     const seed = Number.isFinite(seedValue) ? seedValue : Math.floor(Math.random() * 100000) + 1;
     rng = makeRng(seed);
     const allowLoops = allowLoopsInput.checked;
-    const forceConnect = connectInput.checked;
+    solutionConnected = connectedInput.checked;
     const chooseDensity = densityCheckbox.checked;
-    const densityValue = chooseDensity ? Math.max(1, Math.min(10, parseInt(densityInput.value) || 5)) : Math.floor(rng() * 10) + 1;
+    const densityValue = chooseDensity ? Math.max(1, Math.min(15, parseInt(densityInput.value) || 5)) : Math.floor(rng() * 15) + 1;
 
     const totalEdges = gridSize * (gridSize + 1) * 2;
-    const targetEdges = Math.max(3, Math.round(totalEdges * (densityValue / 10) * 0.5));
+    const targetEdges = Math.max(3, Math.round(totalEdges * (densityValue / 15) * 0.5));
 
-    const generator = allowLoops ? generateConnectedSubgraph : generateSimplePath;
-    let edges = generator(gridSize, targetEdges, forceConnect);
+    let edges;
+    if (solutionConnected) {
+        edges = allowLoops ? generateConnectedSubgraph(gridSize, targetEdges, allowLoops) : generateSimplePath(gridSize, targetEdges);
+    } else {
+        edges = generateRandomEdgeSet(gridSize, targetEdges, allowLoops);
+    }
     if (!edges || edges.size === 0) {
-        edges = generateConnectedSubgraph(gridSize, targetEdges, forceConnect);
+        edges = generateConnectedSubgraph(gridSize, targetEdges, allowLoops);
+        solutionConnected = true;
     }
 
     solutionEdges = edges;
     solutionVertices = collectVertices(edges);
     playerEdges = new Set();
     selectedVertex = null;
-    cellClues = computeCellClues(gridSize, solutionEdges);
+    badCells = [];
+    showingSolution = false;
+    gameFinished = false;
     startTime = Date.now();
-    showMessage(`Game started (seed ${seed}, density ${densityValue}, ${allowLoops ? 'loops allowed' : 'no loops'}).`, 'info');
-    timeEl.textContent = '';
+    updateTimer();
+    startTimer();
+    showMessage(`Game started (seed ${seed}, density ${densityValue}, ${allowLoops ? 'loops allowed' : 'no loops'}, ${solutionConnected ? 'connected' : 'not connected'}).`, 'info');
+    enableInteraction(true);
     drawGrid();
 }
 
@@ -164,13 +180,47 @@ function generateConnectedSubgraph(size, targetEdges, forceConnect) {
         }
         frontier.delete(chosen);
         if (edges.size >= targetEdges) break;
-        if (edges.size < targetEdges && allowLoopsInput.checked) {
+        if (edges.size < targetEdges && allowLoops) {
             const extra = getPossibleLoopEdges(size, edges);
             if (extra.length > 0 && rng() < 0.4) {
                 const candidate = extra[Math.floor(rng() * extra.length)];
                 edges.add(candidate);
             }
         }
+    }
+    return edges;
+}
+
+function generateRandomEdgeSet(size, targetEdges, allowLoops) {
+    const allEdges = [];
+    for (let y = 0; y <= size; y++) {
+        for (let x = 0; x <= size; x++) {
+            if (x < size) allEdges.push(edgeKey({ x, y }, { x: x + 1, y }));
+            if (y < size) allEdges.push(edgeKey({ x, y }, { x, y: y + 1 }));
+        }
+    }
+    const allowedEdges = Math.max(1, Math.min(targetEdges, allEdges.length));
+    shuffle(allEdges);
+    const edges = new Set();
+
+    if (!allowLoops) {
+        const uf = new UnionFind((size + 1) * (size + 1));
+        for (const key of allEdges) {
+            if (edges.size >= allowedEdges) break;
+            const [a, b] = key.split('|').map(coord => coord.split(',').map(Number));
+            const aIndex = a[1] * (size + 1) + a[0];
+            const bIndex = b[1] * (size + 1) + b[0];
+            if (uf.find(aIndex) !== uf.find(bIndex)) {
+                edges.add(key);
+                uf.union(aIndex, bIndex);
+            }
+        }
+        return edges;
+    }
+
+    for (const key of allEdges) {
+        if (edges.size >= allowedEdges) break;
+        edges.add(key);
     }
     return edges;
 }
@@ -228,64 +278,79 @@ function shuffle(array) {
 
 function drawGrid() {
     const size = gridSize;
-    const width = canvas.width;
-    const height = canvas.height;
-    const stepX = width / size;
-    const stepY = height / size;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const width = rect.width;
+    const height = rect.height;
+    const padding = Math.max(16, Math.min(width, height) * 0.06);
+    const stepX = (width - padding * 2) / size;
+    const stepY = (height - padding * 2) / size;
 
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#fafafa';
+    ctx.fillStyle = '#f7fbff';
     ctx.fillRect(0, 0, width, height);
-
     ctx.lineWidth = 1;
-    ctx.strokeStyle = '#ccc';
+    ctx.strokeStyle = '#d7dee8';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.imageSmoothingEnabled = true;
+
     for (let i = 0; i <= size; i++) {
         ctx.beginPath();
-        ctx.moveTo(i * stepX, 0);
-        ctx.lineTo(i * stepX, height);
+        ctx.moveTo(padding + i * stepX, padding);
+        ctx.lineTo(padding + i * stepX, height - padding);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(0, i * stepY);
-        ctx.lineTo(width, i * stepY);
+        ctx.moveTo(padding, padding + i * stepY);
+        ctx.lineTo(width - padding, padding + i * stepY);
         ctx.stroke();
     }
 
-    drawClues(stepX, stepY);
-    drawPlayerEdges(stepX, stepY);
-    drawVertices(stepX, stepY);
-    drawSelectedVertex(stepX, stepY);
+    drawBadCells(stepX, stepY, padding);
+    drawClues(stepX, stepY, padding);
+    if (showingSolution) {
+        drawSolutionEdges(stepX, stepY, padding);
+    }
+    drawPlayerEdges(stepX, stepY, padding);
+    drawVertices(stepX, stepY, padding);
+    drawSelectedVertex(stepX, stepY, padding);
     updateTimer();
 }
 
-function drawClues(stepX, stepY) {
+function drawClues(stepX, stepY, padding) {
     if (!cellClues.length) return;
-    ctx.fillStyle = '#333';
-    ctx.font = '14px sans-serif';
+    ctx.fillStyle = '#1b2c45';
+    ctx.font = '15px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let y = 0; y < gridSize; y++) {
         for (let x = 0; x < gridSize; x++) {
             const clue = cellClues[y][x];
-            const cx = x * stepX + stepX / 2;
-            const cy = y * stepY + stepY / 2;
+            const cx = padding + x * stepX + stepX / 2;
+            const cy = padding + y * stepY + stepY / 2;
             ctx.fillText(`${clue.edges}/${clue.vertices}`, cx, cy);
         }
     }
 }
 
-function drawPlayerEdges(stepX, stepY) {
-    ctx.lineWidth = 6;
+function drawPlayerEdges(stepX, stepY, padding) {
+    ctx.lineWidth = 8;
     ctx.strokeStyle = '#2c7';
+    ctx.lineCap = 'round';
     for (const edge of playerEdges) {
         const [a, b] = edge.split('|').map(coord => coord.split(',').map(Number));
         ctx.beginPath();
-        ctx.moveTo(a[0] * stepX, a[1] * stepY);
-        ctx.lineTo(b[0] * stepX, b[1] * stepY);
+        ctx.moveTo(padding + a[0] * stepX, padding + a[1] * stepY);
+        ctx.lineTo(padding + b[0] * stepX, padding + b[1] * stepY);
         ctx.stroke();
     }
 }
 
-function drawVertices(stepX, stepY) {
+function drawVertices(stepX, stepY, padding) {
     const usedVertices = new Set();
     for (const edge of playerEdges) {
         const [a, b] = edge.split('|').map(coord => coord.split(',').map(Number));
@@ -293,40 +358,63 @@ function drawVertices(stepX, stepY) {
         usedVertices.add(`${b[0]},${b[1]}`);
     }
 
+    const radius = Math.max(4, Math.min(stepX, stepY) * 0.1);
     for (let y = 0; y <= gridSize; y++) {
         for (let x = 0; x <= gridSize; x++) {
-            const px = x * stepX;
-            const py = y * stepY;
+            const px = padding + x * stepX;
+            const py = padding + y * stepY;
             ctx.beginPath();
-            ctx.fillStyle = usedVertices.has(`${x},${y}`) ? '#2c7' : '#333';
-            ctx.arc(px, py, 4, 0, Math.PI * 2);
+            ctx.fillStyle = usedVertices.has(`${x},${y}`) ? '#2c7' : '#144';
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
             ctx.fill();
         }
     }
 }
 
-function drawSelectedVertex(stepX, stepY) {
+function drawSelectedVertex(stepX, stepY, padding) {
     if (!selectedVertex) return;
-    const px = selectedVertex.x * stepX;
-    const py = selectedVertex.y * stepY;
+    const px = padding + selectedVertex.x * stepX;
+    const py = padding + selectedVertex.y * stepY;
     ctx.beginPath();
     ctx.strokeStyle = '#f08';
     ctx.lineWidth = 4;
-    ctx.arc(px, py, 8, 0, Math.PI * 2);
+    ctx.arc(px, py, 10, 0, Math.PI * 2);
     ctx.stroke();
 }
 
+function drawSolutionEdges(stepX, stepY, padding) {
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(35, 110, 200, 0.45)';
+    ctx.lineCap = 'round';
+    for (const edge of solutionEdges) {
+        const [a, b] = edge.split('|').map(coord => coord.split(',').map(Number));
+        ctx.beginPath();
+        ctx.moveTo(padding + a[0] * stepX, padding + a[1] * stepY);
+        ctx.lineTo(padding + b[0] * stepX, padding + b[1] * stepY);
+        ctx.stroke();
+    }
+}
+
+function drawBadCells(stepX, stepY, padding) {
+    if (!badCells || !badCells.length) return;
+    ctx.fillStyle = 'rgba(225, 85, 85, 0.18)';
+    for (const cell of badCells) {
+        ctx.fillRect(padding + cell.x * stepX + 1, padding + cell.y * stepY + 1, stepX - 2, stepY - 2);
+    }
+}
+
 function handleCanvasClick(event) {
-    if (!gridSize) return;
+    if (!gridSize || gameFinished || showingSolution) return;
     const rect = canvas.getBoundingClientRect();
+    const padding = Math.max(16, Math.min(rect.width, rect.height) * 0.06);
+    const stepX = (rect.width - padding * 2) / gridSize;
+    const stepY = (rect.height - padding * 2) / gridSize;
     const pointX = event.clientX - rect.left;
     const pointY = event.clientY - rect.top;
-    const stepX = rect.width / gridSize;
-    const stepY = rect.height / gridSize;
-    const x = Math.round(pointX / stepX);
-    const y = Math.round(pointY / stepY);
+    const x = Math.round((pointX - padding) / stepX);
+    const y = Math.round((pointY - padding) / stepY);
     if (x < 0 || x > gridSize || y < 0 || y > gridSize) return;
-    const dist = Math.hypot(pointX - x * stepX, pointY - y * stepY);
+    const dist = Math.hypot(pointX - (padding + x * stepX), pointY - (padding + y * stepY));
     if (dist > 18) return;
 
     const clickedVertex = { x, y };
@@ -409,18 +497,42 @@ function checkSolution() {
     }
 
     if (errors.length > 0) {
+        badCells = errors.map(item => {
+            const match = item.match(/Cell \((\d+),(\d+)\)/);
+            if (!match) return null;
+            return { x: Number(match[1]), y: Number(match[2]) };
+        }).filter(Boolean);
+        drawGrid();
         showMessage(errors.slice(0, 4).join(' • '), 'error');
+        setTimeout(() => {
+            badCells = [];
+            drawGrid();
+        }, 1200);
         return;
     }
 
-    if (!isConnected(playerEdges)) {
+    if (solutionConnected && !isConnected(playerEdges)) {
+        badCells = [];
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                badCells.push({ x, y });
+            }
+        }
+        drawGrid();
         showMessage('The shaded edges must form one connected path.', 'error');
+        setTimeout(() => {
+            badCells = [];
+            drawGrid();
+        }, 1200);
         return;
     }
 
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     showMessage(`Correct! Puzzle solved in ${elapsed} seconds.`, 'success');
     timeEl.textContent = `Solved in ${elapsed}s`;
+    gameFinished = true;
+    clearInterval(timerInterval);
+    timerInterval = null;
 }
 
 function isConnected(edges) {
@@ -454,10 +566,71 @@ function showMessage(text, type = 'info') {
     messageEl.className = `message ${type}`;
 }
 
+function startTimer() {
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if (!startTime) return;
+        if (gameFinished) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            return;
+        }
+        updateTimer();
+    }, 1000);
+}
+
 function updateTimer() {
     if (!startTime) return;
     const seconds = Math.floor((Date.now() - startTime) / 1000);
-    timeEl.textContent = `Time: ${seconds}s`;
+    timeEl.textContent = gameFinished ? `Solved in ${seconds}s` : `Time: ${seconds}s`;
+}
+
+function enableInteraction(enabled) {
+    startButton.disabled = !enabled;
+    checkButton.disabled = !enabled;
+    showSolutionButton.disabled = !enabled;
+    canvas.style.pointerEvents = enabled ? 'auto' : 'none';
+    allowLoopsInput.disabled = !enabled;
+    seedCheckbox.disabled = !enabled;
+    seedInput.disabled = !enabled;
+    connectedInput.disabled = !enabled;
+    densityCheckbox.disabled = !enabled;
+    densityInput.disabled = !enabled;
+    difficultyInput.disabled = !enabled;
+}
+
+function revealSolution() {
+    if (!solutionEdges || !solutionEdges.size) {
+        showMessage('Start a game first to reveal the solution.', 'warning');
+        return;
+    }
+    showingSolution = true;
+    gameFinished = true;
+    playerEdges = new Set(solutionEdges);
+    badCells = [];
+    updateTimer();
+    enableInteraction(false);
+    showMessage('Solution revealed. The board is now locked.', 'info');
+    drawGrid();
+}
+
+class UnionFind {
+    constructor(size) {
+        this.parent = new Array(size).fill(0).map((_, index) => index);
+    }
+    find(x) {
+        if (this.parent[x] !== x) {
+            this.parent[x] = this.find(this.parent[x]);
+        }
+        return this.parent[x];
+    }
+    union(a, b) {
+        const rootA = this.find(a);
+        const rootB = this.find(b);
+        if (rootA !== rootB) {
+            this.parent[rootB] = rootA;
+        }
+    }
 }
 
 window.addEventListener('resize', () => {

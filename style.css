@@ -74,12 +74,22 @@ button {
     color: white;
     font-weight: 600;
     cursor: pointer;
-    transition: transform 0.15s ease, background 0.15s ease;
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 button:hover {
     transform: translateY(-1px);
     background: #207ab5;
+    box-shadow: 0 8px 18px rgba(45, 156, 219, 0.18);
+}
+
+button.solution-button {
+    background: #d2edff;
+    color: #033d6b;
+}
+
+button.solution-button:hover {
+    background: #b7e0ff;
 }
 
 .message {
