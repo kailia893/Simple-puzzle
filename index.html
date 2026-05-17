@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Puzzle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main>
+        <section class="panel">
+            <div class="control-row">
+                <label for="difficulty">Choose difficulty:</label>
+                <input type="number" id="difficulty" min="3" max="10" value="5">
+            </div>
+            <div class="rules">
+                <h1>Rules</h1>
+                <p>
+                    A grid of cells shows two numbers per cell. The first number is how many shaded vertices
+                    touch that cell, and the second number is how many shaded edges border the cell.
+                </p>
+                <p>
+                    Shade edges by entering two adjacent vertex coordinates. Shaded edges must form one connected
+                    path. If an edge is shaded, both endpoints become shaded vertices.
+                </p>
+            </div>
+            <div class="control-row">
+                <label><input type="checkbox" id="allowLoops"> Allow loops?</label>
+                <label><input type="checkbox" id="seed"> Custom seed?</label>
+                <input type="text" id="seedInput" placeholder="Enter seed here">
+            </div>
+            <div class="control-row">
+                <label><input type="checkbox" id="connect"> Start from a single point?</label>
+                <label><input type="checkbox" id="Density"> Choose density?</label>
+                <input type="number" id="density" min="1" max="10" step="1" placeholder="1-10">
+            </div>
+            <div class="control-row buttons">
+                <button id="startButton">Start Game</button>
+                <button id="checkButton">Check Solution</button>
+            </div>
+            <div class="input-row">
+                <input type="text" id="solution" placeholder="Enter edge e.g. (0,0),(0,1)">
+                <button id="submitButton">Shade Edge</button>
+            </div>
+            <div id="message" class="message"></div>
+            <div id="time" class="message"></div>
+        </section>
+        <section class="board">
+            <canvas id="grid" width="500" height="500"></canvas>
+        </section>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>
