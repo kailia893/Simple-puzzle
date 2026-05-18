@@ -46,8 +46,23 @@ function startGame() {
     const densityValue = chooseDensity ? Math.max(1, Math.min(15, parseInt(densityInput.value) || 5)) : Math.floor(rng() * 15) + 1;
 
     const totalEdges = gridSize * (gridSize + 1) * 2;
-    const densityFraction = 0.35 + ((densityValue - 1) / 14) * 0.5; // 1 => ~35%, 15 => ~85%
-    const targetEdges = Math.max(3, Math.round(totalEdges * densityFraction));
+    const baseDensityFraction = 0.35 + ((densityValue - 1) / 14) * 0.5; // 1 => ~35%, 15 => ~85%
+    let densityFraction = baseDensityFraction;
+    // If we require connectivity but disallow loops, the maximum achievable
+    // fraction of shaded edges is limited by a spanning tree (V-1 edges).
+    if (solutionConnected && !allowLoops) {
+        const V = (gridSize + 1) * (gridSize + 1);
+        const maxTreeEdges = V - 1;
+        const maxTreeFraction = maxTreeEdges / totalEdges;
+        densityFraction = Math.min(baseDensityFraction, maxTreeFraction);
+    }
+    let targetEdges = Math.max(3, Math.round(totalEdges * densityFraction));
+    // Ensure targetEdges doesn't exceed a tree's maximum when loops are disabled
+    if (solutionConnected && !allowLoops) {
+        const V = (gridSize + 1) * (gridSize + 1);
+        const maxTreeEdges = V - 1;
+        targetEdges = Math.min(targetEdges, maxTreeEdges);
+    }
 
     let edges;
     if (solutionConnected) {
@@ -523,6 +538,18 @@ function checkSolution() {
         return;
     }
 
+    // If loops are not allowed, reject any player solution that contains a cycle.
+    if (!allowLoopsInput.checked && hasCycle(playerEdges)) {
+        badCells = [];
+        drawGrid();
+        showMessage('Loops are not allowed for this puzzle.', 'error');
+        setTimeout(() => {
+            badCells = [];
+            drawGrid();
+        }, 1200);
+        return;
+    }
+
     if (solutionConnected && !isConnected(playerEdges)) {
         badCells = [];
         for (let y = 0; y < gridSize; y++) {
@@ -571,6 +598,19 @@ function isConnected(edges) {
         }
     }
     return visited.size === vertices.length;
+}
+
+function hasCycle(edges) {
+    const V = (gridSize + 1) * (gridSize + 1);
+    const uf = new UnionFind(V);
+    for (const edge of edges) {
+        const [a, b] = edge.split('|').map(coord => coord.split(',').map(Number));
+        const ai = a[1] * (gridSize + 1) + a[0];
+        const bi = b[1] * (gridSize + 1) + b[0];
+        if (uf.find(ai) === uf.find(bi)) return true;
+        uf.union(ai, bi);
+    }
+    return false;
 }
 
 function showMessage(text, type = 'info') {
